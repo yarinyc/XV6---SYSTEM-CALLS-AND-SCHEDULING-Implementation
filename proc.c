@@ -7,6 +7,12 @@
 #include "proc.h"
 #include "spinlock.h"
 
+#define DEFAULT_SCHED 0
+#define PRIORITY_SCHED 1
+#define CFS_SCHED 2
+
+int sched_option = DEFAULT_SCHED; // init scheduling type to DEFAULT (round-robin)
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -19,6 +25,10 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
+
+void default_scheduler(void) __attribute__((noreturn));;
+void priority_scheduler(void) __attribute__((noreturn));;
+void cfs_scheduler(void) __attribute__((noreturn));;
 
 void
 pinit(void)
@@ -65,6 +75,40 @@ myproc(void) {
   return p;
 }
 
+//aux function: return current minimum accumulator, saves min proc ptr in p
+// returns -1 if non exists
+long long
+getMinAcc(struct proc **p){ //assumes caller has ptable.lock
+  long long minAcc = -1;
+  struct proc *temp_p, *res;
+  res = null;
+  for(temp_p = ptable.proc; temp_p < &ptable.proc[NPROC]; temp_p++){
+    if(temp_p->state == RUNNABLE || temp_p->state == RUNNING){
+      minAcc = (minAcc == -1) ? res=temp_p, temp_p->accumulator :
+               (temp_p->accumulator < minAcc) ? res=temp_p, temp_p->accumulator :
+                minAcc;
+    }
+  }
+  if(p != null)
+    *p = res;
+  return minAcc;
+}
+
+struct proc*
+getMinRunnable(){ //assumes caller has ptable.lock
+  long long minAcc = -1;
+  struct proc *temp_p, *res;
+  res = null;
+  for(temp_p = ptable.proc; temp_p < &ptable.proc[NPROC]; temp_p++){
+    if(temp_p->state == RUNNABLE){
+      minAcc = (minAcc == -1) ? res=temp_p, temp_p->accumulator :
+               (temp_p->accumulator < minAcc) ? res=temp_p, temp_p->accumulator :
+                minAcc;
+    }
+  }
+  return res;
+}
+
 //PAGEBREAK: 32
 // Look in the process table for an UNUSED proc.
 // If found, change state to EMBRYO and initialize
@@ -75,6 +119,7 @@ allocproc(void)
 {
   struct proc *p;
   char *sp;
+  long long minAcc;
 
   acquire(&ptable.lock);
 
@@ -88,6 +133,10 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->ps_priority = 5; //set priority to default-> 5 (7/4)
+  
+  minAcc = getMinAcc(null);
+  p->accumulator = (minAcc == -1) ? 0 : minAcc; //set accumulator
 
   release(&ptable.lock);
 
@@ -138,6 +187,8 @@ userinit(void)
   p->tf->eflags = FL_IF;
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
+
+  p->ps_priority = 5;  //set priority to default-5 (7/4)
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -300,6 +351,8 @@ wait(int* status)
         p->name[0] = 0;
         p->killed = 0;
         p->exit_status = 0;
+        p->ps_priority = 0;
+        p->accumulator = 0;
         p->state = UNUSED;
         release(&ptable.lock);
         return pid;
@@ -326,7 +379,25 @@ wait(int* status)
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
 void
-scheduler(void)
+scheduler(){
+  switch (sched_option) //choose scheduling type
+  {
+  case PRIORITY_SCHED:
+    priority_scheduler();
+    break;
+
+  case CFS_SCHED:
+    cfs_scheduler();
+    break;
+  
+  default:
+    default_scheduler();
+    break;
+  }
+}
+
+void
+default_scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
@@ -352,6 +423,8 @@ scheduler(void)
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
+      p->accumulator += p->ps_priority; // add priority to process' accumulator
+
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
@@ -359,6 +432,48 @@ scheduler(void)
     release(&ptable.lock);
 
   }
+}
+
+void
+priority_scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+  
+  for(;;){
+    // Enable interrupts on this processor.
+    sti();
+
+    // Loop over process table looking for process to run.
+    acquire(&ptable.lock);
+    
+    while((p = getMinRunnable()) != null){
+
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      p->accumulator += p->ps_priority; // add priority to process' accumulator
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
+    release(&ptable.lock);
+
+  }
+}
+
+void
+cfs_scheduler(){
+  default_scheduler(); //temp line
 }
 
 // Enter scheduler.  Must hold only ptable.lock
@@ -464,10 +579,17 @@ static void
 wakeup1(void *chan)
 {
   struct proc *p;
+  long long minAcc;
 
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+  minAcc = getMinAcc(null);
+  minAcc = (minAcc == -1) ? 0 : minAcc;
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
+      p->accumulator = minAcc;
+    }
+  }
 }
 
 // Wake up all processes sleeping on chan.

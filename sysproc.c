@@ -96,9 +96,22 @@ sys_uptime(void)
   return xticks;
 }
 
-// return how much memory the current process is using bytes
+// return how much memory the current process is using bytes 4/4
 int
 sys_memsize(void)
 {
   return myproc()->sz;
+}
+
+//set current process' priority to "priority" (return -1 if error) 7/4
+int
+sys_setpriority(void)
+{
+  int priority;
+  if(argint(0, &priority) < 0)
+    return -1;
+  if(priority<1 || priority >10)
+    return -1;
+  myproc()->ps_priority = priority;
+  return 0;
 }

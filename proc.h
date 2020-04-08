@@ -50,6 +50,8 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   int exit_status;             // process exit code
+  int ps_priority;             // process proirity
+  long long accumulator;       // process accumulator
 };
 
 // Process memory is laid out contiguously, low addresses first:
