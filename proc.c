@@ -7,12 +7,6 @@
 #include "proc.h"
 #include "spinlock.h"
 
-#define DEFAULT_SCHED 0
-#define PRIORITY_SCHED 1
-#define CFS_SCHED 2
-
-int sched_option = DEFAULT_SCHED; // init scheduling type to DEFAULT (round-robin)
-
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -26,9 +20,9 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
-void default_scheduler(void) __attribute__((noreturn));;
-void priority_scheduler(void) __attribute__((noreturn));;
-void cfs_scheduler(void) __attribute__((noreturn));;
+void default_scheduler(struct cpu*);
+void priority_scheduler(struct cpu*);
+void cfs_scheduler(struct cpu*);
 
 void
 pinit(void)
@@ -380,100 +374,92 @@ wait(int* status)
 //      via swtch back to the scheduler.
 void
 scheduler(){
-  switch (sched_option) //choose scheduling type
-  {
-  case PRIORITY_SCHED:
-    priority_scheduler();
-    break;
-
-  case CFS_SCHED:
-    cfs_scheduler();
-    break;
-  
-  default:
-    default_scheduler();
-    break;
-  }
-}
-
-void
-default_scheduler(void)
-{
-  struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  
+  sched_type = DEFAULT_SCHED; // 9/4 init scheduling type to DEFAULT (round-robin) 
+
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
-    // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+    switch (sched_type){  //choose scheduling type
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+      case PRIORITY_SCHED:
+        priority_scheduler(c);
+        break;
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      p->accumulator += p->ps_priority; // add priority to process' accumulator
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+      case CFS_SCHED:
+        cfs_scheduler(c);
+        break;
+      
+      default:
+        default_scheduler(c);
+        break;
     }
     release(&ptable.lock);
+  }  
+}
 
+void
+default_scheduler(struct cpu *c)
+{
+  struct proc *p;
+
+  // Loop over process table looking for process to run.
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state != RUNNABLE)
+      continue;
+
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
+
+    p->accumulator += p->ps_priority; // add priority to process' accumulator
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+    if(sched_type != DEFAULT_SCHED) // if policy changed, break to change scheduler function
+      break;
   }
 }
 
 void
-priority_scheduler(void)
+priority_scheduler(struct cpu *c)
 {
   struct proc *p;
-  struct cpu *c = mycpu();
-  c->proc = 0;
-  
-  for(;;){
-    // Enable interrupts on this processor.
-    sti();
-
-    // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
     
-    while((p = getMinRunnable()) != null){
+  while((p = getMinRunnable()) != null){
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+    p->accumulator += p->ps_priority; // add priority to process' accumulator
 
-      p->accumulator += p->ps_priority; // add priority to process' accumulator
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
-    }
-    release(&ptable.lock);
-
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+    if(sched_type != PRIORITY_SCHED) // if policy changed, break to change scheduler function
+      break;
   }
 }
 
 void
-cfs_scheduler(){
-  default_scheduler(); //temp line
+cfs_scheduler(struct cpu *c){
+  default_scheduler(c); //ignore! this is a temp line
 }
 
 // Enter scheduler.  Must hold only ptable.lock
@@ -580,14 +566,27 @@ wakeup1(void *chan)
 {
   struct proc *p;
   long long minAcc;
-
-  minAcc = getMinAcc(null);
-  minAcc = (minAcc == -1) ? 0 : minAcc;
+  int count = 0;
+  int flag = 0;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == RUNNABLE || p->state == RUNNING){
+      flag = 1; // at least one non sleeping process
+    }
     if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
-      p->accumulator = minAcc;
+      count++; // count how many processes wake up
+    }
+  }
+  minAcc = getMinAcc(null); // get current minimum accumulator
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == RUNNABLE && p->chan == chan){
+      if(count == 1 && flag == 0){
+        p->accumulator = 0; // there is only one runnable so it gets accumulator=0
+      }
+      else{
+        p->accumulator = minAcc;
+      }
     }
   }
 }

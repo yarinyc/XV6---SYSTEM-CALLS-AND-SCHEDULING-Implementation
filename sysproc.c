@@ -115,3 +115,16 @@ sys_setpriority(void)
   myproc()->ps_priority = priority;
   return 0;
 }
+
+//set current scheduler policy - 0-default ; 1-priority ; 2-CFS ; other-error
+int
+sys_policy(void)
+{
+  int policy;
+  if(argint(0, &policy) < 0)
+    return -1;
+  if(policy<0 || policy >2) // 0<=policy<=2
+    return -1;
+  sched_type = policy;
+  return 0;
+}

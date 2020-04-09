@@ -10,6 +10,13 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+#define DEFAULT_SCHED 0
+#define PRIORITY_SCHED 1
+#define CFS_SCHED 2
+
+int sched_type;
+
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -190,3 +197,5 @@ void            clearpteu(pde_t *pgdir, char *uva);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+

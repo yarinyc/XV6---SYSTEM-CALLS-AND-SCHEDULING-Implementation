@@ -105,6 +105,7 @@ extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_memsize(void);
 extern int sys_setpriority(void);
+extern int sys_policy(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -130,6 +131,7 @@ static int (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_memsize] sys_memsize,
 [SYS_setpriority]   sys_setpriority,
+[SYS_policy]   sys_policy,
 };
 
 void
