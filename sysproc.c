@@ -105,7 +105,7 @@ sys_memsize(void)
 
 //set current process' priority to "priority" (return -1 if error) 7/4
 int
-sys_setpriority(void)
+sys_set_ps_priority(void)
 {
   int priority;
   if(argint(0, &priority) < 0)
@@ -126,5 +126,37 @@ sys_policy(void)
   if(policy<0 || policy >2) // 0<=policy<=2
     return -1;
   sched_type = policy;
+  return 0;
+}
+
+int
+sys_set_cfs_priority(void)
+{
+  int cfs_priority;
+  if(argint(0, &cfs_priority) < 0)
+    return -1;
+  if(cfs_priority == 1)
+    myproc()->decay_factor = 0.75;
+  else if (cfs_priority == 2)
+    myproc()->decay_factor = 1;
+  else if(cfs_priority == 3)
+    myproc()->decay_factor = 1.25;
+  else
+    return -1;
+  
+  return 0;
+}
+
+int
+sys_proc_info(void)
+{
+  char *performance;
+  if(argptr(0, &performance, sizeof(struct perf)))
+    return -1;
+  struct proc *proc = myproc();
+  ((struct perf *)performance)->ps_priority = proc->ps_priority;
+  ((struct perf *)performance)->stime = proc->stime;
+  ((struct perf *)performance)->retime = proc->retime;
+  ((struct perf *)performance)->rtime = proc->rtime;
   return 0;
 }

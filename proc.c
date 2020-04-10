@@ -103,6 +103,47 @@ getMinRunnable(){ //assumes caller has ptable.lock
   return res;
 }
 
+// calc the runtime ratio as described in the assignmnet, returns currmin if we need to divde by 0
+double calcRatio(struct proc *p, double currMin){
+  double denominator = p->rtime + p->stime + p->retime;
+  if(denominator == 0) // to avoid dividing by 0 return curr min
+    return currMin;    // and the current process will not bee the new min
+  return (p->rtime * p->decay_factor)/denominator;
+}
+
+struct proc*
+getMinRuntimeRatio(){ //assumes caller has ptable.lock
+  struct proc *temp_p, *res;
+  res = null;
+  double min = -1;
+  for(temp_p = ptable.proc; temp_p < &ptable.proc[NPROC]; temp_p++){
+    if(temp_p->state == RUNNABLE){
+      double currMin = calcRatio(temp_p, min);
+      min = (min == -1) ? res=temp_p, currMin :
+            (currMin < min) ? res=temp_p, currMin :
+             min;
+    }
+  }
+  return res;
+}
+
+void updateStats(){
+  struct proc *p;
+
+  acquire(&ptable.lock);
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == RUNNING)
+      p->rtime++;
+    else if(p->state == RUNNABLE)
+      p->retime++;
+    else if(p->state == SLEEPING)
+      p->stime++;
+  }
+
+  release(&ptable.lock);
+}
+
 //PAGEBREAK: 32
 // Look in the process table for an UNUSED proc.
 // If found, change state to EMBRYO and initialize
@@ -131,6 +172,9 @@ found:
   
   minAcc = getMinAcc(null);
   p->accumulator = (minAcc == -1) ? 0 : minAcc; //set accumulator
+  p->rtime = 0;   //init performance stats for CFS
+  p->stime = 0;
+  p->retime = 0;
 
   release(&ptable.lock);
 
@@ -182,7 +226,7 @@ userinit(void)
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
 
-  p->ps_priority = 5;  //set priority to default-5 (7/4)
+  p->decay_factor = 1;
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -256,6 +300,7 @@ fork(void)
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
   pid = np->pid;
+  np->decay_factor = curproc->decay_factor;
 
   acquire(&ptable.lock);
 
@@ -347,6 +392,9 @@ wait(int* status)
         p->exit_status = 0;
         p->ps_priority = 0;
         p->accumulator = 0;
+        p->rtime = 0;
+        p->stime = 0;
+        p->retime = 0;
         p->state = UNUSED;
         release(&ptable.lock);
         return pid;
@@ -398,7 +446,7 @@ scheduler(){
         break;
     }
     release(&ptable.lock);
-  }  
+  } 
 }
 
 void
@@ -459,7 +507,27 @@ priority_scheduler(struct cpu *c)
 
 void
 cfs_scheduler(struct cpu *c){
-  default_scheduler(c); //ignore! this is a temp line
+  struct proc *p;
+  
+  while((p = getMinRuntimeRatio()) != null){
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
+
+    p->accumulator += p->ps_priority; // add priority to process' accumulator
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+    if(sched_type != CFS_SCHED) // if policy changed, break to change scheduler function
+      break;
+  }
 }
 
 // Enter scheduler.  Must hold only ptable.lock

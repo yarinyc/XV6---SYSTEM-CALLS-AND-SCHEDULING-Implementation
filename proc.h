@@ -52,6 +52,10 @@ struct proc {
   int exit_status;             // process exit code
   int ps_priority;             // process proirity
   long long accumulator;       // process accumulator
+  double decay_factor;         // decay factor for CFS scheduling 1|1.25|0.75
+  int rtime;                   // process performance stats for CFS
+  int stime;
+  int retime;
 };
 
 // Process memory is laid out contiguously, low addresses first:

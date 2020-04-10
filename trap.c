@@ -51,6 +51,7 @@ trap(struct trapframe *tf)
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;
+      updateStats(); // update rtime, stime and retime for all processes
       wakeup(&ticks);
       release(&tickslock);
     }
