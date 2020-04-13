@@ -20,6 +20,7 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
+//scheduling options:
 void default_scheduler(struct cpu*);
 void priority_scheduler(struct cpu*);
 void cfs_scheduler(struct cpu*);
@@ -69,7 +70,8 @@ myproc(void) {
   return p;
 }
 
-//aux function: return current minimum accumulator, saves min proc ptr in p
+//aux functions:
+// return current minimum accumulator, saves min proc ptr in p
 // returns -1 if non exists
 long long
 getMinAcc(struct proc **p){ //assumes caller has ptable.lock
@@ -88,6 +90,7 @@ getMinAcc(struct proc **p){ //assumes caller has ptable.lock
   return minAcc;
 }
 
+// returns current minimum runnable proc or null if non exists
 struct proc*
 getMinRunnable(){ //assumes caller has ptable.lock
   long long minAcc = -1;
@@ -111,6 +114,7 @@ double calcRatio(struct proc *p, double currMin){
   return (p->rtime * p->decay_factor)/denominator;
 }
 
+// returns the runnable proc with the min ratio or null if non exists
 struct proc*
 getMinRuntimeRatio(){ //assumes caller has ptable.lock
   struct proc *temp_p, *res;
@@ -127,6 +131,7 @@ getMinRuntimeRatio(){ //assumes caller has ptable.lock
   return res;
 }
 
+// update all procs' stats for CFS in the proc table
 void updateStats(){
   struct proc *p;
 

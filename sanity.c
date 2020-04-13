@@ -2,6 +2,7 @@
 #include "stat.h"
 #include "user.h"
 
+// fib function for heavier calculation
 int fib(int n) 
 { 
    if (n <= 1) 
@@ -20,7 +21,7 @@ main(int argc, char *argv[])
       int dummy = 0;
       while(i--){
         dummy+=i;
-        fib(8);
+        fib(5);
       }
       struct perf *performance = malloc(sizeof(struct perf));
       proc_info(performance);
@@ -36,7 +37,7 @@ main(int argc, char *argv[])
       int dummy = 0;
       while(i--){
         dummy+=i;
-        fib(8);
+        fib(5);
       }
       struct perf *performance = malloc(sizeof(struct perf));
       proc_info(performance);
@@ -52,7 +53,7 @@ main(int argc, char *argv[])
       int dummy = 0;
       while(i--){
         dummy+=i;
-        fib(8);
+        fib(5); //do some calculation
       }
       struct perf *performance = malloc(sizeof(struct perf));
       proc_info(performance);
@@ -61,7 +62,7 @@ main(int argc, char *argv[])
       free(performance);
       exit(0);
     }
-    wait(null);
+    wait(null); // wait for all children to end
     wait(null);
     wait(null);
     exit(0);
