@@ -446,9 +446,12 @@ scheduler(){
         cfs_scheduler(c);
         break;
       
-      default:
+      case DEFAULT_SCHED:
         default_scheduler(c);
         break;
+
+      default:
+        panic("wrong policy value");
     }
     release(&ptable.lock);
   } 

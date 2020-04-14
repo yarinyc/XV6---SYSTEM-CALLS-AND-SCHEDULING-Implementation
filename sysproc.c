@@ -147,6 +147,7 @@ sys_set_cfs_priority(void)
   return 0;
 }
 
+// sys call puts all the stats of the curr proc in perf struct
 int
 sys_proc_info(void)
 {
