@@ -477,8 +477,6 @@ default_scheduler(struct cpu *c)
     swtch(&(c->scheduler), p->context);
     switchkvm();
 
-    p->accumulator += p->ps_priority; // add priority to process' accumulator
-
     // Process is done running for now.
     // It should have changed its p->state before coming back.
     c->proc = 0;
@@ -503,8 +501,6 @@ priority_scheduler(struct cpu *c)
     swtch(&(c->scheduler), p->context);
     switchkvm();
 
-    p->accumulator += p->ps_priority; // add priority to process' accumulator
-
     // Process is done running for now.
     // It should have changed its p->state before coming back.
     c->proc = 0;
@@ -527,8 +523,6 @@ cfs_scheduler(struct cpu *c){
 
     swtch(&(c->scheduler), p->context);
     switchkvm();
-
-    p->accumulator += p->ps_priority; // add priority to process' accumulator
 
     // Process is done running for now.
     // It should have changed its p->state before coming back.
@@ -570,6 +564,9 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
+
+  myproc()->accumulator += myproc()->ps_priority; // add priority to process' accumulator
+
   sched();
   release(&ptable.lock);
 }
